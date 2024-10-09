@@ -1,0 +1,185 @@
+//@version=5
+indicator("ICT Asian Range and Killzones (Power of 3)", overlay=true)
+
+// Inputs for Asian Session
+asianStartHour = input.int(0, title="Asian Session Start Hour", minval=0, maxval=23, group="Asian Range (UTC)", tooltip="Some brokers have different time zones (like forex.com). If the Asian range is not drawn correctly, change the start hour to '23' instead of '0'.")
+asianEndHour = input.int(4, title="Asian Session End Hour", minval=0, maxval=23, group="Asian Range (UTC)")
+
+// Inputs for Killzones (London and New York)
+drawLondonKillzone = input.bool(true, title="Draw London Killzone", group="Killzones (UTC)")
+londonOpenStartHour = input.int(6, title="London Open Start Hour", minval=0, maxval=23, group="Killzones (UTC)")
+londonOpenEndHour = input.int(9, title="London Open End Hour", minval=0, maxval=23, group="Killzones (UTC)")
+
+drawNYKillzone = input.bool(true, title="Draw New York Killzone", group="Killzones (UTC)")
+newYorkOpenStartHour = input.int(11, title="New York Open Start Hour", minval=0, maxval=23, group="Killzones (UTC)")
+newYorkOpenEndHour = input.int(14, title="New York Open End Hour", minval=0, maxval=23, group="Killzones (UTC)")
+
+// Inputs for Visuals
+asianRangeLabelColor = input.color(color.new(color.blue, 10), title="Asian Range Label Color", group="Visuals")
+londonOpenLabelColor = input.color(color.new(color.green, 10), title="London Open Killzone Label Color", group="Visuals")
+newYorkOpenLabelColor = input.color(color.new(color.orange, 10), title="New York Open Killzone Label Color", group="Visuals")
+labelSize = input.string("small", title="Label Size", options=["auto", "small", "normal", "large"], group="Visuals")
+
+// Inputs for Box Customization
+asianBoxColor = input.color(color.new(color.blue, 85), title="Asian Box Background Color", group="Visuals")
+londonBoxColor = input.color(color.new(color.green, 85), title="London Box Background Color", group="Visuals")
+newYorkBoxColor = input.color(color.new(color.orange, 85), title="New York Box Background Color", group="Visuals")
+showBoxBorders = input.bool(false, title="Show Box Borders", group="Visuals")
+
+// Convert label size input to correct format
+labelSizeEnum = labelSize == "auto" ? size.auto :
+     labelSize == "small" ? size.small :
+     labelSize == "normal" ? size.normal :
+     size.large
+
+// Function to calculate timestamps based on the bar's day
+get_session_times(_startHour, _endHour) =>
+    sessionStart = timestamp("UTC", year, month, dayofmonth, _startHour, 0)
+    sessionEnd = timestamp("UTC", year, month, dayofmonth, _endHour, 0)
+    [sessionStart, sessionEnd]
+
+// Get session times for Asian, London, and New York Killzones
+[asianStartTime, asianEndTime] = get_session_times(asianStartHour, asianEndHour)
+[londonOpenStartTime, londonOpenEndTime] = get_session_times(londonOpenStartHour, londonOpenEndHour)
+[newYorkOpenStartTime, newYorkOpenEndTime] = get_session_times(newYorkOpenStartHour, newYorkOpenEndHour)
+
+// Variables to store the high and low for each session
+var float asianHigh = na
+var float asianLow = na
+var int asianHighBar = na
+var int asianLowBar = na
+
+var float londonHigh = na
+var float londonLow = na
+var int londonHighBar = na
+var int londonLowBar = na
+
+var float newYorkHigh = na
+var float newYorkLow = na
+var int newYorkHighBar = na
+var int newYorkLowBar = na
+
+// Variables for the boxes
+var box asianBox = na
+var box londonBox = na
+var box newYorkBox = na
+
+// Check if box borders should be shown
+borderColor = showBoxBorders ? color.black : na
+
+// Adjust end time if Asian session ends past midnight
+asianEndTime := asianEndHour < asianStartHour ? asianEndTime + 24 * 60 * 60 * 1000 : asianEndTime
+
+// Track highs and lows for Asian range
+if (time >= asianStartTime and time <= asianEndTime)
+    if na(asianHigh)
+        // Initialize Asian range tracking and draw the initial box
+        asianHigh := high
+        asianLow := low
+        asianHighBar := bar_index
+        asianLowBar := bar_index
+        asianBox := box.new(left=bar_index, top=asianHigh, right=bar_index, bottom=asianLow, border_color=borderColor, bgcolor=asianBoxColor)
+    else
+        // Update high, low, and the box as new bars are processed
+        if high > asianHigh
+            asianHigh := high
+            asianHighBar := bar_index
+        if low < asianLow
+            asianLow := low
+            asianLowBar := bar_index
+
+        box.set_right(asianBox, bar_index)  // Extend the box to the current bar
+        box.set_top(asianBox, asianHigh)    // Adjust the top of the box
+        box.set_bottom(asianBox, asianLow)  // Adjust the bottom of the box
+
+else
+    // Plot Asian range lines and labels after the session ends
+    if not na(asianHigh) and not na(asianLow)
+        line.new(x1=asianHighBar, y1=asianHigh, x2=bar_index, y2=asianHigh, color=asianRangeLabelColor, width=1)
+        label.new(x=bar_index, y=asianHigh, text="Asian High: " + str.tostring(asianHigh), color=asianRangeLabelColor, textcolor=color.white, style=label.style_label_down, size=labelSizeEnum)
+        
+        line.new(x1=asianLowBar, y1=asianLow, x2=bar_index, y2=asianLow, color=asianRangeLabelColor, width=1)
+        label.new(x=bar_index, y=asianLow, text="Asian Low: " + str.tostring(asianLow), color=asianRangeLabelColor, textcolor=color.white, style=label.style_label_up, size=labelSizeEnum)
+
+    // Reset Asian range variables after the session ends
+    asianBox := na
+    asianHigh := na
+    asianLow := na
+    asianHighBar := na
+    asianLowBar := na
+
+// Track highs and lows for London Killzone if enabled
+if drawLondonKillzone and (time >= londonOpenStartTime and time <= londonOpenEndTime)
+    if na(londonHigh)
+        // Initialize London Killzone tracking and draw the initial box
+        londonHigh := high
+        londonLow := low
+        londonHighBar := bar_index
+        londonLowBar := bar_index
+        londonBox := box.new(left=bar_index, top=londonHigh, right=bar_index, bottom=londonLow, border_color=borderColor, bgcolor=londonBoxColor)
+    else
+        // Update high, low, and the box as new bars are processed
+        if high > londonHigh
+            londonHigh := high
+            londonHighBar := bar_index
+        if low < londonLow
+            londonLow := low
+            londonLowBar := bar_index
+
+        box.set_right(londonBox, bar_index)  // Extend the box to the current bar
+        box.set_top(londonBox, londonHigh)   // Adjust the top of the box
+        box.set_bottom(londonBox, londonLow) // Adjust the bottom of the box
+
+else
+    // Plot London Killzone range lines and labels after the session ends
+    if drawLondonKillzone and not na(londonHigh) and not na(londonLow)
+        line.new(x1=londonHighBar, y1=londonHigh, x2=bar_index, y2=londonHigh, color=londonOpenLabelColor)
+        label.new(x=bar_index, y=londonHigh, text="London Killzone High: " + str.tostring(londonHigh), color=londonOpenLabelColor, textcolor=color.white, style=label.style_label_down, size=labelSizeEnum)
+
+        line.new(x1=londonLowBar, y1=londonLow, x2=bar_index, y2=londonLow, color=londonOpenLabelColor)
+        label.new(x=bar_index, y=londonLow, text="London Killzone Low: " + str.tostring(londonLow), color=londonOpenLabelColor, textcolor=color.white, style=label.style_label_up, size=labelSizeEnum)
+
+    // Reset London Killzone variables after the session ends
+    londonBox := na
+    londonHigh := na
+    londonLow := na
+    londonHighBar := na
+    londonLowBar := na
+
+// Track highs and lows for New York Killzone if enabled
+if drawNYKillzone and (time >= newYorkOpenStartTime and time <= newYorkOpenEndTime)
+    if na(newYorkHigh)
+        // Initialize New York Killzone tracking and draw the initial box
+        newYorkHigh := high
+        newYorkLow := low
+        newYorkHighBar := bar_index
+        newYorkLowBar := bar_index
+        newYorkBox := box.new(left=bar_index, top=newYorkHigh, right=bar_index, bottom=newYorkLow, border_color=borderColor, bgcolor=newYorkBoxColor)
+    else
+        // Update high, low, and the box as new bars are processed
+        if high > newYorkHigh
+            newYorkHigh := high
+            newYorkHighBar := bar_index
+        if low < newYorkLow
+            newYorkLow := low
+            newYorkLowBar := bar_index
+
+        box.set_right(newYorkBox, bar_index)  // Extend the box to the current bar
+        box.set_top(newYorkBox, newYorkHigh)  // Adjust the top of the box
+        box.set_bottom(newYorkBox, newYorkLow) // Adjust the bottom of the box
+
+else
+    // Plot New York Killzone range lines and labels after the session ends
+    if drawNYKillzone and not na(newYorkHigh) and not na(newYorkLow)
+        line.new(x1=newYorkHighBar, y1=newYorkHigh, x2=bar_index, y2=newYorkHigh, color=newYorkOpenLabelColor)
+        label.new(x=bar_index, y=newYorkHigh, text="New York Killzone High: " + str.tostring(newYorkHigh), color=newYorkOpenLabelColor, textcolor=color.white, style=label.style_label_down, size=labelSizeEnum)
+
+        line.new(x1=newYorkLowBar, y1=newYorkLow, x2=bar_index, y2=newYorkLow, color=newYorkOpenLabelColor)
+        label.new(x=bar_index, y=newYorkLow, text="New York Killzone Low: " + str.tostring(newYorkLow), color=newYorkOpenLabelColor, textcolor=color.white, style=label.style_label_up, size=labelSizeEnum)
+
+    // Reset New York Killzone variables after the session ends
+    newYorkBox := na
+    newYorkHigh := na
+    newYorkLow := na
+    newYorkHighBar := na
+    newYorkLowBar := na
